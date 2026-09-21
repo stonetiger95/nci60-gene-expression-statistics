@@ -1,0 +1,362 @@
+---
+title: "NCI-60 Gene Expression Statistics"
+subtitle: "Exploratory high-dimensional biostatistics with explicit uncertainty and limitations"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    self_contained: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.align = "center"
+)
+
+SEED <- 1234
+set.seed(SEED)
+
+library(ISLR2)
+
+project_root <- normalizePath("..", winslash = "/", mustWork = TRUE)
+figure_dir <- file.path(project_root, "figures")
+dir.create(figure_dir, showWarnings = FALSE, recursive = TRUE)
+
+cancer_colors <- c(
+  BREAST = "#CC6677",
+  COLON = "#4477AA",
+  NSCLC = "#228833",
+  MELANOMA = "#AA3377",
+  RENAL = "#EE7733"
+)
+```
+
+# Purpose and statistical scope
+
+This report consolidates the actual methods used in the NCI-60 coursework: one-way ANOVA, Benjamini-Hochberg (BH) adjustment, hierarchical clustering, K-means, PCA, bootstrap, and permutation testing. It is an exploratory analysis of a small, high-dimensional cell-line dataset, not a biomarker study or a validated cancer classifier.
+
+# Data
+
+```{r load-data}
+data("NCI60", package = "ISLR2")
+
+selected_types <- c("BREAST", "COLON", "NSCLC", "MELANOMA", "RENAL")
+selected <- NCI60$labs %in% selected_types
+nci_raw <- NCI60$data[selected, , drop = FALSE]
+nci_labs <- factor(NCI60$labs[selected], levels = selected_types)
+
+dim(NCI60$data)
+dim(nci_raw)
+table(nci_labs)
+```
+
+The package dataset contains 64 cell lines and 6,830 expression variables. The coursework subset contains 40 cell lines from five cancer types. No raw data file is stored in this repository.
+
+# Preprocessing
+
+Each expression variable is standardized once across the selected 40 cell lines.
+
+```{r standardize}
+nci_scaled <- scale(nci_raw)
+stopifnot(identical(dim(nci_scaled), c(40L, 6830L)))
+```
+
+The original third assignment included a duplicated scaling step in one path. The consolidated version removes that duplication without changing the intended analysis.
+
+# Hierarchical clustering
+
+The coursework compared single, complete, average, and centroid linkage using Euclidean distance. Complete linkage is shown because it had relatively visible label alignment in this dataset; it is not claimed to be generally superior.
+
+```{r hierarchical-clustering}
+linkage_methods <- c("single", "complete", "average", "centroid")
+hc_list <- lapply(linkage_methods, function(method) {
+  hclust(dist(nci_scaled), method = method)
+})
+names(hc_list) <- linkage_methods
+
+cluster_tables <- lapply(hc_list, function(hc) {
+  table(Cluster = cutree(hc, k = 5), Cancer = nci_labs)
+})
+
+cluster_tables$complete
+```
+
+```{r save-hierarchical-figure, include=FALSE}
+png(file.path(figure_dir, "hierarchical_clustering.png"), width = 1800, height = 1200, res = 180)
+par(mar = c(8, 5, 4, 2))
+plot(
+  hc_list$complete,
+  labels = as.character(nci_labs),
+  main = "Complete-linkage clustering of 40 NCI-60 cell lines",
+  xlab = "Cancer-type labels (descriptive only)",
+  sub = "Euclidean distance on 6,830 standardized expression variables",
+  ylab = "Height",
+  hang = -1,
+  cex = 0.65
+)
+rect.hclust(hc_list$complete, k = 5, border = "#4477AA")
+dev.off()
+```
+
+```{r show-hierarchical-figure, echo=FALSE, out.width="95%"}
+knitr::include_graphics(file.path(figure_dir, "hierarchical_clustering.png"))
+```
+
+Six MELANOMA cell lines occur together in one of the five complete-linkage clusters, but the contingency table also shows substantial mixing. This is an in-sample structure description, not independent cancer-type prediction.
+
+# Gene-wise ANOVA and multiple testing
+
+A one-way ANOVA is run for each of 6,830 variables. With thousands of simultaneous tests, raw p-values cannot by themselves define discoveries.
+
+```{r gene-wise-anova}
+anova_p <- apply(nci_scaled, 2, function(x) {
+  anova(lm(x ~ nci_labs))$`Pr(>F)`[1]
+})
+
+gene_anova <- data.frame(
+  Variable = colnames(nci_scaled),
+  Raw_P = anova_p,
+  BH_Adjusted_P = p.adjust(anova_p, method = "BH"),
+  stringsAsFactors = FALSE
+)
+gene_anova <- gene_anova[order(gene_anova$Raw_P), ]
+
+bh_counts <- c(
+  total = nrow(gene_anova),
+  q_0_05 = sum(gene_anova$BH_Adjusted_P < 0.05),
+  q_0_10 = sum(gene_anova$BH_Adjusted_P < 0.10)
+)
+bh_counts
+head(gene_anova, 20)
+```
+
+The top 20 variables below are selected only by raw p-value rank to reproduce the coursework path. They are not labeled “significant genes.” The BH analysis is a later portfolio review check, not an analysis originally included in the third assignment.
+
+```{r top20}
+top20_variables <- gene_anova$Variable[1:20]
+top20 <- nci_scaled[, top20_variables, drop = FALSE]
+top20_variables
+```
+
+```{r save-multiple-testing-figure, include=FALSE}
+png(file.path(figure_dir, "multiple_testing.png"), width = 1600, height = 1000, res = 180)
+plot(
+  -log10(gene_anova$Raw_P),
+  type = "l",
+  col = "#4477AA",
+  lwd = 2,
+  xlab = "Variables ordered by raw ANOVA p-value",
+  ylab = expression(-log[10](p)),
+  main = "Raw ranking and BH-adjusted evidence are not interchangeable"
+)
+lines(-log10(gene_anova$BH_Adjusted_P), col = "#CC6677", lwd = 2)
+abline(h = -log10(0.05), lty = 2, col = "grey35")
+legend(
+  "topright",
+  legend = c("Raw p-value", "BH-adjusted p-value", "0.05 threshold"),
+  col = c("#4477AA", "#CC6677", "grey35"),
+  lty = c(1, 1, 2),
+  lwd = c(2, 2, 1),
+  bty = "n"
+)
+dev.off()
+```
+
+```{r show-multiple-testing-figure, echo=FALSE, out.width="95%"}
+knitr::include_graphics(file.path(figure_dir, "multiple_testing.png"))
+```
+
+# K-means on the raw-p-ranked top 20
+
+```{r kmeans}
+set.seed(SEED)
+kmeans_top20 <- kmeans(top20, centers = 5, nstart = 50)
+W <- kmeans_top20$tot.withinss
+
+kmeans_table <- table(Cluster = kmeans_top20$cluster, Cancer = nci_labs)
+kmeans_table
+
+gene_influence <- do.call(rbind, lapply(seq_along(top20_variables), function(j) {
+  set.seed(SEED)
+  fit_j <- kmeans(top20[, -j, drop = FALSE], centers = 5, nstart = 50)
+  data.frame(
+    Variable = top20_variables[j],
+    Abs_W_Difference = abs(W - fit_j$tot.withinss),
+    stringsAsFactors = FALSE
+  )
+}))
+gene_influence <- gene_influence[order(-gene_influence$Abs_W_Difference), ]
+gene_influence
+```
+
+The largest leave-one-variable-out change is attached to matrix ID `r gene_influence$Variable[1]` (`r sprintf("%.3f", gene_influence$Abs_W_Difference[1])`). This is sensitivity of an in-sample clustering objective—not evidence that the ID is a clinical biomarker. The cancer labels were used to rank variables before K-means, and the same samples and labels are used to describe agreement, so the result is optimistically biased and not external validation.
+
+# PCA
+
+```{r pca}
+pca_fit <- prcomp(nci_raw, center = TRUE, scale. = TRUE)
+pca20 <- pca_fit$x[, 1:20, drop = FALSE]
+explained <- (pca_fit$sdev ^ 2) / sum(pca_fit$sdev ^ 2) * 100
+explained[1:5]
+```
+
+```{r save-pca-figure, include=FALSE}
+png(file.path(figure_dir, "pca_scores.png"), width = 1500, height = 1100, res = 180)
+plot(
+  pca_fit$x[, 1],
+  pca_fit$x[, 2],
+  pch = 19,
+  col = cancer_colors[as.character(nci_labs)],
+  xlab = sprintf("PC1 (%.1f%%)", explained[1]),
+  ylab = sprintf("PC2 (%.1f%%)", explained[2]),
+  main = "PCA of the five-cancer NCI-60 subset"
+)
+legend(
+  "topright",
+  legend = names(cancer_colors),
+  col = cancer_colors,
+  pch = 19,
+  bty = "n"
+)
+dev.off()
+```
+
+```{r show-pca-figure, echo=FALSE, out.width="90%"}
+knitr::include_graphics(file.path(figure_dir, "pca_scores.png"))
+```
+
+PCA is used here for unsupervised structure exploration. Separation in a score plot is not classification accuracy and does not establish a biological mechanism.
+
+# Bootstrap uncertainty for PC1 + PC2
+
+The following reproduces the coursework definition: resample 40 cell-line indices with replacement, calculate the cell-line correlation matrix, and record the share of its eigenvalue sum represented by the first two components.
+
+```{r bootstrap}
+set.seed(SEED)
+boot_index <- apply(matrix(1:40, 40, 1000), 2, sample, replace = TRUE)
+eigenvalues_boot <- matrix(0, nrow = 1000, ncol = 40)
+
+for (i in 1:1000) {
+  idx <- boot_index[, i]
+  cor_boot <- cor(t(nci_scaled[idx, ]))
+  eigenvalues_boot[i, ] <- eigen(cor_boot, symmetric = TRUE)$values
+}
+
+pc12_variance <- apply(eigenvalues_boot, 1, function(x) {
+  sum(x[1:2]) / sum(x) * 100
+})
+bootstrap_ci <- quantile(pc12_variance, c(0.025, 0.975))
+bootstrap_ci
+```
+
+This interval measures sample-composition variability under the coursework resampling scheme. It does not propagate uncertainty from the supervised top-20 feature selection.
+
+# Permutation tests for PC–label association
+
+For each of the first 20 PC scores, a one-way ANOVA F statistic is compared with 1,000 label permutations. The +1 correction gives p-values with denominator 1,001.
+
+```{r permutation}
+observed_f <- apply(pca20, 2, function(x) {
+  anova(lm(x ~ nci_labs))$`F value`[1]
+})
+
+set.seed(SEED)
+perm_index <- apply(matrix(1:40, 40, 1000), 2, sample, replace = FALSE)
+f_perm <- matrix(NA_real_, nrow = 1000, ncol = 20)
+
+for (i in 1:1000) {
+  permuted_labs <- nci_labs[perm_index[, i]]
+  f_perm[i, ] <- apply(pca20, 2, function(x) {
+    anova(lm(x ~ permuted_labs))$`F value`[1]
+  })
+}
+
+perm_p <- vapply(1:20, function(j) {
+  (sum(f_perm[, j] >= observed_f[j]) + 1) / 1001
+}, numeric(1))
+
+permutation_results <- data.frame(
+  PC = colnames(pca20),
+  Permutation_P = perm_p,
+  stringsAsFactors = FALSE
+)
+permutation_results[permutation_results$Permutation_P < 0.05, ]
+```
+
+The threshold above is component-wise and unadjusted. Because 20 PCs are tested, a multiple-testing limitation remains; these are exploratory association checks rather than confirmatory discoveries.
+
+```{r save-resampling-figure, include=FALSE}
+png(file.path(figure_dir, "resampling_results.png"), width = 1800, height = 900, res = 180)
+par(mfrow = c(1, 2), mar = c(5, 5, 4, 2))
+hist(
+  pc12_variance,
+  breaks = 30,
+  col = "#88CCEE",
+  border = "white",
+  main = "Bootstrap: variance explained by PC1 + PC2",
+  xlab = "Variance explained (%)"
+)
+abline(v = bootstrap_ci, col = "#CC6677", lwd = 2, lty = 2)
+barplot(
+  -log10(perm_p),
+  names.arg = paste0("PC", 1:20),
+  las = 2,
+  col = ifelse(perm_p < 0.05, "#4477AA", "grey75"),
+  main = "Component-wise permutation results",
+  ylab = expression(-log[10](p))
+)
+abline(h = -log10(0.05), col = "#CC6677", lwd = 2, lty = 2)
+par(mfrow = c(1, 1))
+dev.off()
+```
+
+```{r show-resampling-figure, echo=FALSE, out.width="100%"}
+knitr::include_graphics(file.path(figure_dir, "resampling_results.png"))
+```
+
+# Reproducibility checks
+
+```{r checks}
+expected <- list(
+  bh_q_0_05 = 1437L,
+  bh_q_0_10 = 2169L,
+  bootstrap_ci = c(22.12480, 30.07429),
+  significant_pcs = c("PC1", "PC2", "PC3", "PC5", "PC9")
+)
+
+stopifnot(
+  unname(bh_counts["q_0_05"]) == expected$bh_q_0_05,
+  unname(bh_counts["q_0_10"]) == expected$bh_q_0_10,
+  isTRUE(all.equal(unname(bootstrap_ci), expected$bootstrap_ci, tolerance = 1e-5)),
+  identical(
+    permutation_results$PC[permutation_results$Permutation_P < 0.05],
+    expected$significant_pcs
+  )
+)
+
+data.frame(
+  Check = c("BH q < 0.05", "BH q < 0.10", "Bootstrap lower", "Bootstrap upper"),
+  Value = c(bh_counts["q_0_05"], bh_counts["q_0_10"], bootstrap_ci[1], bootstrap_ci[2])
+)
+```
+
+# Limitations
+
+- The selected dataset has 40 cell lines and 6,830 variables.
+- Cell lines are not a clinical cohort.
+- Raw-p top-20 selection and clustering assessment reuse the same labeled data.
+- No independent or held-out validation is performed.
+- BH-adjusted results are distinct from the raw ranking and were added during portfolio review.
+- Component-wise permutation tests leave multiplicity across 20 PCs unresolved.
+- Matrix IDs are not interpreted as validated gene symbols or clinical biomarkers.
+
+# Session information
+
+```{r session-info}
+sessionInfo()
+```
+

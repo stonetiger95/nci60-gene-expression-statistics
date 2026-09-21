@@ -1,0 +1,235 @@
+---
+title: "Homework 3 - Sanitized Coursework Copy"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+라이브러리 호출 및 데이터 정의
+
+```{r , warning=F, message=F}
+library(tidyverse)
+library(ISLR2)
+data(NCI60)
+sel <- c("BREAST", "COLON", "NSCLC", "MELANOMA", "RENAL")
+nci.data <- NCI60$data[(NCI60$labs %in% sel), ] %>% scale()
+nci.labs <- NCI60$labs[(NCI60$labs %in% sel)]
+```
+
+### Q1. 
+For each cancer subtype, compute Euclidean distances between all pairwise samples. Do not consider to compute the distance between samples from different subtypes. Find the numerical values of the minimum, the median and the maximum distances for each cancer subtype.
+
+```{r}
+res <- list()
+for (i in sel) {
+  genes <- nci.data[nci.labs == i,]
+  d<-dist(genes, method = "euclidean")
+  res[[i]] <- d
+}
+
+ans <- sapply(res, function(x) {
+  vals <- as.numeric(x)
+  c(min = min(vals), median = median(vals), max = max(vals))
+})
+
+ans %>% t() %>% as.data.frame()
+```
+
+### Q2.  
+Perform a hierarchical clustering using the Euclidean distance with 4 different linkage methods such as “single”, “complete”, “average” and “centroid." Provide 4 hierarchical clustering trees where the names of cancer subtypes should be displayed. Cut the trees so that each has 5 clusters and then compare the clustering result of 5 different cancer subtypes. Finally, pick up the best linkage method for clustering. Explain the reason of your choice.
+
+```{r}
+methods <- c("single", "complete", "average" , "centroid" )
+out <- list()
+h <- list()
+
+for (i in methods){
+hc <- hclust(dist(scale(nci.data)), method = i)
+out[[i]] <- hc
+h[[i]] <- sort(hc$height, decreasing = TRUE)[4]
+}
+```
+
+```{r}
+plot(out$single, 
+     main="Single Linkage", xlab="", sub="", hang=-1,
+     labels = nci.labs)
+abline(h=h$single, col="red")
+```
+
+Single Linkage의 경우 거의 모든 샘플이 하나의 클러스터에 포함되었고, 나머지 클러스터에 각각 하나의 샘플만 포함되었다.
+
+```{r}
+plot(out$complete, 
+     main="Complete Linkage", xlab="", sub="", hang=-1,
+     labels= nci.labs)
+abline(h=h$complete, col="red")
+```
+
+Complete Linkage는 다른 분류방식에 비해 클러스터에 관측치가 비교적 고르게 분포되었고, MELANOMA의 경우는 잘 분류되었다.
+
+```{r}
+plot(out$average, 
+     main="Average Linkage", xlab="", sub="", hang=-1,
+     labels= nci.labs)
+abline(h=h$average, col="red")
+```
+
+Single Linkage의 경우와 유사하게 하나의 클러스터에 대부분의 샘플이 혼재되어있고, 나머지 클러스터에는 각각 하나의 샘플만 분류되었다.
+
+```{r}
+plot(out$centroid, 
+     main="Centroid Linkage", xlab="", sub="", hang=-1,
+     labels= nci.labs)
+abline(h=h$centroid, col="red")
+```
+
+Single Linkage의 경우와 유사하게 하나의 클러스터에 대부분의 샘플이 분류되었었고, 나머지 클러스터에는 각각 하나의 샘플만 분류되었다.
+
+위의 내용을 종합하면, complete linkage가 다소 부족하긴 하지만 가장 적절한 방법이라 판단된다.
+
+아래는 각 linkage method에서 얻은 군집 번호와 실제 레이블 간의 혼동행렬(confusion matrix)을 생성하는 코드이다.
+
+```{r}
+cm<-list()
+for (i in methods){
+  clust <- cutree(out[[i]], k=5)
+  cm[[i]] <- table(clust, nci.labs)
+}
+
+cm$complete
+```
+
+혼동 행렬을 살펴보면 위의 분석을 보다 명확히 확인할 수 있다. MELANOMA 는 주로 cluster 5에 포함되었으며, NSCLC는 cluster2에 대부분이 포함되었으나 해당 클러스터에 다른 label도 많이 포함되어 변별이 어렵다. RENAL과 COLON도 각각 50% 수준이 두개의 클러스터에 나뉘어서 분류되었다.
+
+
+### Q3.
+Compute a Pearson’s correlation coefficient (PCC) between all pairwise samples from different cancer subtypes. Similar to the complete linkage method, take the maximum value of PCC between two different cancer types. Note that the maximum value of PCC means the value farthest from zero so it can be negative. Provide the 5 × 5 PCC matrix with 1s on the diagonals.
+
+```{r}
+C <- cor(t(nci.data))
+pairs <- combn(sel, 2)
+result <- matrix(1, 5, 5)
+rownames(result) <- sel
+colnames(result) <- sel
+
+for (k in 1:ncol(pairs)) {
+  a <- pairs[1, k]
+  b <- pairs[2, k]
+  
+  idx_a <- which(nci.labs == a)
+  idx_b <- which(nci.labs == b)
+  
+  max_corr <- max(abs(C[idx_a, idx_b]))
+  result[a, b] <- max_corr
+  result[b, a] <- max_corr
+}
+result %>% round(3)
+```
+
+###Q4.
+For each gene, perform one-way ANOVA see if there is a significant difference in expression levels among 5 cancer subtypes. 
+Identify top 20 genes based on the significance of ANOVA.
+
+```{r}
+pval <- apply(nci.data,2, function(x){
+   anova(lm(x~nci.labs))$Pr[1]})
+
+top20 <- nci.data[,order(pval)[1:20]]
+```
+
+Next, conduct K-means clustering with K=5 and nstart=50 using only top 20 genes. 
+Let us denote the total within cluster variation by W. 
+Also, the total within cluster variation is denoted by Wj if the j-th gene is removed out and K-means clustering is conducted with only 19 genes.
+List the gene number and the numerical value of \|W −Wj\| for top 20 genes. 
+Which gene has the most significant impact on clustering?
+
+```{r}
+cl <- kmeans(top20, centers = 5, nstart = 50)
+W <- cl$tot.withinss
+
+res <- sapply(1:20, function(j){
+  data <- top20[,-j]
+  cl_j <- kmeans(data, centers=5, nstart = 50)
+  abs(W - cl_j$tot.withinss)
+})
+
+result <- data.frame(
+            gene = colnames(top20),
+            diff=res
+                     )
+result %>% arrange(desc(diff)) %>% head(1)
+```
+
+
+###Q5.
+Find a 95% bootstrap confidence interval for the percentages of variance explained by the first two principal components among the maximum 40 components. 
+Use the following bootstrap indices boot such that
+
+```{r}
+set.seed(1234)
+boot <- apply(matrix(1:40, 40, 1000), 2, sample, replace=TRUE)
+```
+
+The eigenvalue decomposition of the 40 × 40 correlation matrix should be conducted.
+
+```{r}
+eval <- matrix(0, 1000, 40)
+
+for (i in 1:1000){
+  idx <- boot[,i]
+  cor_boot <- cor(t(nci.data[idx,]))
+  eval[i,] <- eigen(cor_boot)$values
+}
+
+a <- apply(eval, 1,  function(x){
+ sum(x[1:2]) / sum(x) * 100 })
+
+quantile(a, c(0.025, 0.975))
+```
+
+
+###Q6.
+First, extract the first 20 principal components (PC) from 6,830 genes using the function prcomp(... , scale=TRUE). 
+```{r}
+pca<-prcomp(nci.data, scale=T)
+pca20 <- pca$x[,1:20]
+```
+Next, compute the F-test statistic of one-way ANOVA to test association between each PC and 5 cancer subtypes. 
+```{r}
+F_stat <- apply(pca20, 2, function(x){
+   anova(lm(x ~ nci.labs))$`F`[1]
+})
+```
+
+In order to obtain the association p-value, perform the permutation test using the indices perm such that
+```{r}
+set.seed(1234)
+perm <- apply(matrix(1:40, 40, 1000), 2, sample, replace=FALSE)
+```
+where 1,000 permutations were generated. Only cancer subtypes should be permuted each permutation. 
+Which PCs are statistically significant at a level of 0.05? 
+Identify the significant PCs and their permutation p-values. 
+Note that the permutation p-values should be based on the number of permutation + 1 (i.e., 1,001).
+```{r}
+F_perm <- matrix(NA, nrow = 1000, ncol = 20)
+
+for (i in 1:1000) {
+  labs_perm <- nci.labs[perm[, i]]
+  F_perm[i, ] <- apply(pca20, 2, function(x) {
+    summary(aov(x ~ labs_perm))[[1]]$`F`[1]
+  })
+}
+
+perm_pval <- sapply(1:20, function(j){
+  (sum(F_perm[, j] >= F_stat[j]) + 1) / (1000 + 1)
+})
+
+data.frame(PCs = colnames(pca20), 
+           pval = round(perm_pval, 4)) %>%
+           filter(pval < 0.05) 
+```
+
+

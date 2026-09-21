@@ -1,0 +1,269 @@
+---
+title: "Homework 2 - Sanitized Coursework Copy"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r library, message=F, warning=F}
+library(tidyverse)
+```
+
+### 0. 
+define data for simulate 
+
+```{r}
+set.seed(12345)
+y <- matrix(rbinom(10000 * 1000, 1, 0.1), 10000, 1000)
+x <- matrix(rnorm(10000 * 1000), 10000, 1000)
+x[y==1] <- rnorm(sum(y==1), mean=2)
+```
+
+
+
+### 1. 
+
+0)Set critical values for each test
+
+```{r}
+alpha <- 0.05
+t20 <- qt(1-alpha/2, df=20)
+t50 <- qt(1-alpha/2, df=50)
+z <- qnorm(1-alpha/2)
+```
+
+1)find the significant genes
+
+```{r}
+t20_sig <- abs(x) > t20
+t50_sig <- abs(x) > t50
+z_sig   <- abs(x) > z
+```
+
+2)compute the proportion of significant genes
+
+```{r}
+t20_sig_rate <- colMeans(t20_sig) 
+t50_sig_rate <- t50_sig %>% colMeans()
+z_sig_rate   <- z_sig %>% colMeans()
+```
+
+3)report the averaged proportion of the significant genes over 1,000 replications for each test.
+
+```{r}
+data.frame(
+  Test = c("T20", "T50", "Z"),
+  Average_proportion = c(mean(t20_sig_rate), mean(t50_sig_rate), mean(z_sig_rate))
+)
+```
+
+### 2.
+
+```{r}
+alphas <- c(0.01, 0.05, 0.1)
+t20_s <-list()
+t50_s <- list()
+z_s <- list()
+
+for (a in alphas) {
+  sig <- as.character(a)
+  t20_s[[sig]] <- qt(1 - a/2, df = 20)
+  t50_s[[sig]] <- qt(1 - a/2, df = 50)
+  z_s[[sig]]   <- qnorm(1 - a/2)
+}
+
+H0_t <- y == 0
+fpr_results <- list()
+
+for (a in alphas) {
+  sig <- as.character(a)
+  
+  sig_t20 <- abs(x) > t20_s[[sig]]
+  sig_t50 <- abs(x) > t50_s[[sig]]
+  sig_z <- abs(x) > z_s[[sig]]
+
+  fpr_t20 <- rowSums(sig_t20 & H0_t) / rowSums(H0_t)
+  fpr_t50 <- rowSums(sig_t50 & H0_t) / rowSums(H0_t)
+  fpr_z   <- rowSums(sig_z   & H0_t) / rowSums(H0_t)
+  
+  fpr_results[[sig]] <- c(
+    T20 = mean(fpr_t20, na.rm = TRUE),
+    T50 = mean(fpr_t50, na.rm = TRUE),
+    Z   = mean(fpr_z,   na.rm = TRUE)
+  )
+}
+
+fpr_results %>% 
+  as.data.frame() %>%  
+  rename_with(~ paste0("α = ", sub("^X", "", .x))) %>%
+  rownames_to_column(var = "Test")
+```
+
+### 3.
+
+```{r}
+H0_f <- y == 1
+
+tpr_results <- list()
+
+for (a in alphas) {
+  sig <- as.character(a)
+  
+  sig_t20 <- abs(x) > t20_s[[sig]]
+  sig_t50 <- abs(x) > t50_s[[sig]]
+  sig_z <- abs(x) > z_s[[sig]]
+
+  tpr_t20 <- rowSums(sig_t20 & H0_f) / rowSums(H0_f)
+  tpr_t50 <- rowSums(sig_t50 & H0_f) / rowSums(H0_f)
+  tpr_z   <- rowSums(sig_z   & H0_f) / rowSums(H0_f)
+  
+  tpr_results[[sig]] <- c(
+    T20 = mean(tpr_t20, na.rm = TRUE),
+    T50 = mean(tpr_t50, na.rm = TRUE),
+    Z   = mean(tpr_z,   na.rm = TRUE)
+  )
+}
+
+tpr_results %>% 
+  as.data.frame() %>%  
+  rename_with(~ paste0("α = ", sub("^X", "", .x))) %>%
+  rownames_to_column(var = "Test")
+```
+
+### 4. 
+
+1)compute Bonferroni adjusted p-values
+
+```{r}
+bonf_alphas <- alphas / 10000
+bonf_t20_s <- list()
+bonf_t50_s <- list()
+bonf_z_s   <- list()
+
+for (i in 1:3) {
+  name <- as.character(alphas[i])
+  bonf_t20_s[[name]] <- qt(1 - bonf_alphas[i]/2, df = 20)
+  bonf_t50_s[[name]] <- qt(1 - bonf_alphas[i]/2, df = 50)
+  bonf_z_s[[name]]   <- qnorm(1 - bonf_alphas[i]/2)
+}
+```
+
+2)see if there is at least one type I error (false positive, FP) among the significant genes for each test and each level.
+
+```{r}
+t1e_sum <- list()
+
+for (a in alphas) {
+  sig <- as.character(a)
+  
+  sig_t20 <- abs(x) > bonf_t20_s[[sig]]
+  sig_t50 <- abs(x) > bonf_t50_s[[sig]]
+  sig_z <- abs(x) > bonf_z_s[[sig]]
+
+  t1e_t20 <- colSums(sig_t20 & H0_t) != 0
+  t1e_t50 <- colSums(sig_t50 & H0_t) != 0
+  t1e_z   <- colSums(sig_z   & H0_t) != 0
+  
+  t1e_sum[[sig]] <- c(
+    T20 = sum(t1e_t20),
+    T50 = sum(t1e_t50),
+    Z   = sum(t1e_z)
+  )
+}
+
+sum(unlist(t1e_sum))
+```
+
+3)report the proportion of replications with at least one FP among 1,000 replications for each test and each level.
+
+```{r}
+t1e_rate <- list()
+
+for (a in alphas) {
+  sig <- as.character(a)
+  
+  sig_t20 <- abs(x) > bonf_t20_s[[sig]]
+  sig_t50 <- abs(x) > bonf_t50_s[[sig]]
+  sig_z <- abs(x) > bonf_z_s[[sig]]
+
+  t1e_t20 <- colSums(sig_t20 & H0_t) != 0
+  t1e_t50 <- colSums(sig_t50 & H0_t) != 0
+  t1e_z   <- colSums(sig_z   & H0_t) != 0
+  
+  t1e_rate[[sig]] <- c(
+    T20 = sum(t1e_t20)/1000,
+    T50 = sum(t1e_t50)/1000,
+    Z   = sum(t1e_z)/1000
+  )
+}
+
+t1e_rate %>% 
+  as.data.frame() %>% 
+  rename_with(~ paste0("α = ", sub("^X", "", .x))) %>%
+  rownames_to_column(var = "Test")
+```
+
+### 5. 
+
+1)compute adjusted p-values using the BH method with five different FDR levels of 0.01, 0.05, 0.1, 0.2 and 0.3.
+
+```{r}
+pval_t20 <- 2 * (1 - pt(abs(x), df=20))
+pval_t50 <- 2 * (1 - pt(abs(x), df=50))
+pval_z <- 2 *  (1 - pnorm(abs(x)))
+
+adj_pval_t20 <- apply(pval_t20, 2,FUN = p.adjust, method = "BH")
+adj_pval_t50 <- apply(pval_t50, 2,FUN = p.adjust, method = "BH")
+adj_pval_z <- apply(pval_z, 2, FUN = p.adjust, method = "BH")
+```
+
+2)compute the false discovery rates (FDR) of three different tests and five different levels.
+
+```{r}
+fdr_lvl <- c(0.01,0.05,0.1,0.2,0.3)
+
+fdr_list <- list()
+
+for (i in fdr_lvl) {
+  sig <- as.character(i)
+  
+  sig_t20 <- adj_pval_t20 < i 
+  sig_t50 <- adj_pval_t50 < i
+  sig_z <- adj_pval_z < i 
+  
+  
+  fdr_list[[sig]] <- list(
+   T20 = colSums(sig_t20&H0_t)/colSums(sig_t20),
+   T50 = colSums(sig_t50&H0_t)/colSums(sig_t50),
+   Z =  colSums(sig_z&H0_t)/colSums(sig_z)
+  )
+}
+
+```
+
+3)report the mean value of FDR over 1,000 replications for each test and each level.(exclude no rejections)
+
+```{r}
+fdr_result <- list()
+for (i in fdr_lvl) {
+  sig <- as.character(i)
+  
+  t20_fdr <- fdr_list[[sig]]$T20
+  t50_fdr <- fdr_list[[sig]]$T50
+  z_fdr   <- fdr_list[[sig]]$Z
+  
+  fdr_result[[sig]] <- c(
+    T20 = mean(t20_fdr, na.rm = TRUE),
+    T50 = mean(t50_fdr, na.rm = TRUE),
+    Z   = mean(z_fdr, na.rm = TRUE)
+  )
+}
+
+fdr_result %>% 
+  as.data.frame() %>% 
+  rename_with(~ paste0("α = ", sub("^X", "", .x))) %>%
+  rownames_to_column(var = "Test")
+  
+```
