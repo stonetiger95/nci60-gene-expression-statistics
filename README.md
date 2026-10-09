@@ -17,7 +17,7 @@ Bootstrap과 permutation을 통해 설명분산과 레이블 연관성의 불확
 
 ## 프로젝트 개요
 
-생물통계 수업의 세 과제를 하나의 재현 가능한 분석 흐름으로 재구성했습니다. 실제 과제에서 사용한 one-way ANOVA, Benjamini-Hochberg adjustment, hierarchical clustering, K-means, PCA, bootstrap, permutation test만 유지했으며 새로운 모델이나 결과 개선을 위한 재튜닝은 추가하지 않았습니다. 원본 코드에서 확인된 중복 표준화, 재현성 설정, 통계적 표현 문제는 [`docs/analysis_notes.md`](docs/analysis_notes.md)에 기록했습니다.
+통계학 복수전공의 생물통계학 과정에서 수행한 세 분석을 하나의 재현 가능한 흐름으로 재구성했습니다. 원본 분석에서 사용한 one-way ANOVA, Benjamini-Hochberg adjustment, hierarchical clustering, K-means, PCA, bootstrap, permutation test만 유지했으며 새로운 모델이나 결과 개선을 위한 재튜닝은 추가하지 않았습니다. 원본 코드에서 확인된 중복 표준화, 재현성 설정, 통계적 표현 문제는 [`docs/analysis_notes.md`](docs/analysis_notes.md)에 기록했습니다.
 
 This repository presents a reproducible, exploratory analysis of high-dimensional NCI-60 gene-expression data. The emphasis is on multiple-testing awareness, transparent uncertainty assessment, and interpretation within the limits of a small cell-line dataset.
 
@@ -47,12 +47,12 @@ Raw data는 저장소에 포함하지 않았습니다. 출처, 설치 방법과 
 2. 40개 세포주를 기준으로 각 발현 변수를 한 번 표준화합니다.
 3. Complete-linkage hierarchical clustering으로 세포주 구조를 탐색합니다.
 4. 6,830개 유전자별 one-way ANOVA를 수행하고 raw p-value와 BH-adjusted p-value를 함께 확인합니다.
-5. 원 과제와 동일하게 raw p-value 순위 상위 20개 변수를 이용해 K-means를 수행합니다.
+5. 원본 분석과 동일하게 raw p-value 순위 상위 20개 변수를 이용해 K-means를 수행합니다.
 6. PCA로 고차원 구조를 요약하고 bootstrap 및 label permutation으로 변동성을 검토합니다.
 
 ## 다중검정과 FDR
 
-6,830개의 가설을 동시에 검정하므로 raw p-value만으로 발견 여부를 판단하지 않았습니다. 원 과제의 Top 20은 **raw p-value가 작은 순서로 선택한 탐색적 변수 집합**이며, “유의 유전자” 또는 “FDR 보정 후 발견된 유전자”로 표현하지 않습니다.
+6,830개의 가설을 동시에 검정하므로 raw p-value만으로 발견 여부를 판단하지 않았습니다. 원본 분석의 Top 20은 **raw p-value가 작은 순서로 선택한 탐색적 변수 집합**이며, “유의 유전자” 또는 “FDR 보정 후 발견된 유전자”로 표현하지 않습니다.
 
 Benjamini-Hochberg 보정은 포트폴리오 재검토 과정에서 실제 NCI-60 ANOVA 결과에 적용했습니다.
 
@@ -116,7 +116,7 @@ PCA score plot은 6,830차원의 발현 정보를 저차원으로 요약해 암�
 - 세포주 자료이며 실제 환자 자료나 임상 검증 cohort가 아닙니다.
 - 변수 선택과 군집 평가에 동일한 표본과 암종 레이블을 재사용했습니다.
 - Held-out data 또는 독립 외부 데이터에 대한 검증이 없습니다.
-- Bootstrap은 원 과제의 재표본화 정의를 재현하며, 변수 선택 불확실성 전체를 반영하지 않습니다.
+- Bootstrap은 원본 분석의 재표본화 정의를 재현하며, 변수 선택 불확실성 전체를 반영하지 않습니다.
 - 20개 PC의 permutation 결과에 다중검정 보정을 적용하지 않았습니다.
 - Matrix variable ID는 검증된 gene symbol이 아니며, 탐색 결과를 biomarker나 diagnostic marker로 해석할 수 없습니다.
 
