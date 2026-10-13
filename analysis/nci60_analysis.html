@@ -1683,8 +1683,8 @@ in a score plot is not classification accuracy and does not establish a
 biological mechanism.</p>
 </div>
 <div id="bootstrap-uncertainty-for-pc1-pc2" class="section level1" number="8">
-<h1><span class="header-section-number">8</span> Bootstrap uncertainty
-for PC1 + PC2</h1>
+<h1><span class="header-section-number">8</span> Bootstrap sensitivity
+for the coursework-defined leading components</h1>
 <p>The following reproduces the coursework definition: resample 40
 cell-line indices with replacement, calculate the cell-line correlation
 matrix, and record the share of its eigenvalue sum represented by the
@@ -1706,9 +1706,7 @@ bootstrap_ci &lt;- quantile(pc12_variance, c(0.025, 0.975))
 bootstrap_ci</code></pre>
 <pre><code>##     2.5%    97.5% 
 ## 22.12480 30.07429</code></pre>
-<p>This interval measures sample-composition variability under the
-coursework resampling scheme. It does not propagate uncertainty from the
-supervised top-20 feature selection.</p>
+<p>This interval is a descriptive summary of sample-composition variability under the coursework definition based on the leading two eigenvalues of the resampled cell-line correlation matrix. Because the variable-wise standardization from the full selected dataset is held fixed, it is not a bootstrap confidence interval obtained by refitting the complete preprocessing and PCA pipeline in every resample.</p>
 </div>
 <div id="permutation-tests-for-pclabel-association" class="section level1" number="9">
 <h1><span class="header-section-number">9</span> Permutation tests for

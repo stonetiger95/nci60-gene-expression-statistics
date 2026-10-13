@@ -11,7 +11,7 @@ This repository preserves the actual coursework methods without adding a new pre
 - Euclidean hierarchical clustering with the coursework linkage comparison
 - K-means with K = 5 and `nstart = 50` on the top 20 raw-p-ranked variables
 - PCA of the standardized expression matrix
-- 1,000-resample bootstrap interval for PC1 + PC2 explained variance
+- 1,000-resample bootstrap interval for the leading-two-eigenvalue share of the resampled cell-line correlation matrix
 - 1,000 label permutations for association tests on the first 20 PCs
 
 ## Corrections made during portfolio reconstruction
@@ -40,7 +40,7 @@ This repository preserves the actual coursework methods without adding a new pre
 | Expression variables | 6,830 |
 | BH-adjusted p < 0.05 | 1,437 |
 | BH-adjusted p < 0.10 | 2,169 |
-| PC1 + PC2 bootstrap interval | 22.12480%–30.07429% |
+| Coursework-defined leading-two-eigenvalue bootstrap interval | 22.12480%–30.07429% |
 | Unadjusted permutation p < 0.05 | PC1, PC2, PC3, PC5, PC9 |
 | Largest leave-one-variable-out K-means change | ID 282; 18.205 (rounded) |
 

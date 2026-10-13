@@ -231,7 +231,7 @@ knitr::include_graphics(file.path(figure_dir, "pca_scores.png"))
 
 PCA is used here for unsupervised structure exploration. Separation in a score plot is not classification accuracy and does not establish a biological mechanism.
 
-# Bootstrap uncertainty for PC1 + PC2
+# Bootstrap sensitivity for the coursework-defined leading components
 
 The following reproduces the coursework definition: resample 40 cell-line indices with replacement, calculate the cell-line correlation matrix, and record the share of its eigenvalue sum represented by the first two components.
 
@@ -253,7 +253,7 @@ bootstrap_ci <- quantile(pc12_variance, c(0.025, 0.975))
 bootstrap_ci
 ```
 
-This interval measures sample-composition variability under the coursework resampling scheme. It does not propagate uncertainty from the supervised top-20 feature selection.
+This interval is a descriptive summary of sample-composition variability under the coursework definition based on the leading two eigenvalues of the resampled cell-line correlation matrix. Because the variable-wise standardization from the full selected dataset is held fixed, it is not a bootstrap confidence interval obtained by refitting the complete preprocessing and PCA pipeline in every resample.
 
 # Permutation tests for PC–label association
 
